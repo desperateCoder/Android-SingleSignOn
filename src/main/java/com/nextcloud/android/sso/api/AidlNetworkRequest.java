@@ -17,7 +17,6 @@ import com.google.gson.Gson;
 import com.google.gson.internal.LinkedTreeMap;
 import com.nextcloud.android.sso.Constants;
 import com.nextcloud.android.sso.aidl.IInputStreamService;
-import com.nextcloud.android.sso.aidl.IThreadListener;
 import com.nextcloud.android.sso.aidl.NextcloudRequest;
 import com.nextcloud.android.sso.aidl.ParcelFileDescriptorUtil;
 import com.nextcloud.android.sso.exceptions.NextcloudApiNotRespondingException;
@@ -281,64 +280,55 @@ public class AidlNetworkRequest extends NetworkRequest {
         request.setAccountName(getAccountName());
         request.setToken(getAccountToken());
 
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        ObjectOutputStream oos = new ObjectOutputStream(baos);
-        oos.writeObject(request);
-        oos.close();
-        baos.close();
-        InputStream is = new ByteArrayInputStream(baos.toByteArray());
+        try ( ByteArrayOutputStream baos = new ByteArrayOutputStream();
+              ObjectOutputStream oos = new ObjectOutputStream(baos)){
+            oos.writeObject(request);
+            InputStream is = new ByteArrayInputStream(baos.toByteArray());
 
-        ParcelFileDescriptor input = ParcelFileDescriptorUtil.pipeFrom(is,
-                new IThreadListener() {
-                    @Override
-                    public void onThreadFinished(Thread thread) {
-                        Log.d(TAG, "copy data from service finished");
-                    }
-                });
+            // InputStream is should be closed in pipeFrom
+            ParcelFileDescriptor input = ParcelFileDescriptorUtil.pipeFrom(is,
+                    thread -> Log.d(TAG, "copy data from service finished"));
+            ParcelFileDescriptor requestBodyParcelFileDescriptor = null;
+            if (requestBodyInputStream != null) {
+                requestBodyParcelFileDescriptor = ParcelFileDescriptorUtil.pipeFrom(requestBodyInputStream,
+                        thread -> Log.d(TAG, "copy data from service finished"));
+            }
 
-        ParcelFileDescriptor requestBodyParcelFileDescriptor = null;
-        if (requestBodyInputStream != null) {
-            requestBodyParcelFileDescriptor = ParcelFileDescriptorUtil.pipeFrom(requestBodyInputStream,
-                    new IThreadListener() {
-                        @Override
-                        public void onThreadFinished(Thread thread) {
-                            Log.d(TAG, "copy data from service finished");
-                        }
-                    });
+            ParcelFileDescriptor output;
+            if (requestBodyParcelFileDescriptor != null) {
+                output = mService.performNextcloudRequestAndBodyStreamV2(input, requestBodyParcelFileDescriptor);
+            } else {
+                output = mService.performNextcloudRequestV2(input);
+            }
+
+            return output;
         }
-
-        ParcelFileDescriptor output;
-        if (requestBodyParcelFileDescriptor != null) {
-            output = mService.performNextcloudRequestAndBodyStreamV2(input, requestBodyParcelFileDescriptor);
-        } else {
-            output = mService.performNextcloudRequestV2(input);
-        }
-
-        return output;
     }
 
     private static <T> T deserializeObject(InputStream is) throws IOException, ClassNotFoundException {
-        ObjectInputStream ois = new ObjectInputStream(is);
-        T result = (T) ois.readObject();
-        return result;
+        try (ObjectInputStream ois = new ObjectInputStream(is)) {
+            T result = (T) ois.readObject();
+            return result;
+        }
     }
 
     private ExceptionResponse deserializeObjectV2(InputStream is) throws IOException, ClassNotFoundException {
-        ObjectInputStream ois = new ObjectInputStream(is);
-        ArrayList<PlainHeader> headerList = new ArrayList<>();
-        Exception exception = (Exception) ois.readObject();
+        try (ObjectInputStream ois = new ObjectInputStream(is)) {
+            ArrayList<PlainHeader> headerList = new ArrayList<>();
+            Exception exception = (Exception) ois.readObject();
 
-        if (exception == null) {
-            String headers = (String) ois.readObject();
-            ArrayList list = new Gson().fromJson(headers, ArrayList.class);
+            if (exception == null) {
+                String headers = (String) ois.readObject();
+                ArrayList list = new Gson().fromJson(headers, ArrayList.class);
 
-            for (Object o : list) {
-                LinkedTreeMap treeMap = (LinkedTreeMap) o;
-                headerList.add(new PlainHeader((String) treeMap.get("name"), (String) treeMap.get("value")));
+                for (Object o : list) {
+                    LinkedTreeMap treeMap = (LinkedTreeMap) o;
+                    headerList.add(new PlainHeader((String) treeMap.get("name"), (String) treeMap.get("value")));
+                }
             }
-        }
 
-        return new ExceptionResponse(exception, headerList);
+            return new ExceptionResponse(exception, headerList);
+        }
     }
 
     public class PlainHeader implements Serializable {
