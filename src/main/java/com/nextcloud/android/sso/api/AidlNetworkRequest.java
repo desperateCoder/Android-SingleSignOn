@@ -306,29 +306,27 @@ public class AidlNetworkRequest extends NetworkRequest {
     }
 
     private static <T> T deserializeObject(InputStream is) throws IOException, ClassNotFoundException {
-        try (ObjectInputStream ois = new ObjectInputStream(is)) {
-            T result = (T) ois.readObject();
-            return result;
-        }
+        ObjectInputStream ois = new ObjectInputStream(is)
+        T result = (T) ois.readObject();
+        return result;
     }
 
     private ExceptionResponse deserializeObjectV2(InputStream is) throws IOException, ClassNotFoundException {
-        try (ObjectInputStream ois = new ObjectInputStream(is)) {
-            ArrayList<PlainHeader> headerList = new ArrayList<>();
-            Exception exception = (Exception) ois.readObject();
+        ObjectInputStream ois = new ObjectInputStream(is);
+        ArrayList<PlainHeader> headerList = new ArrayList<>();
+        Exception exception = (Exception) ois.readObject();
 
-            if (exception == null) {
-                String headers = (String) ois.readObject();
-                ArrayList list = new Gson().fromJson(headers, ArrayList.class);
+        if (exception == null) {
+            String headers = (String) ois.readObject();
+            ArrayList list = new Gson().fromJson(headers, ArrayList.class);
 
-                for (Object o : list) {
-                    LinkedTreeMap treeMap = (LinkedTreeMap) o;
-                    headerList.add(new PlainHeader((String) treeMap.get("name"), (String) treeMap.get("value")));
-                }
+            for (Object o : list) {
+                LinkedTreeMap treeMap = (LinkedTreeMap) o;
+                headerList.add(new PlainHeader((String) treeMap.get("name"), (String) treeMap.get("value")));
             }
-
-            return new ExceptionResponse(exception, headerList);
         }
+
+        return new ExceptionResponse(exception, headerList);
     }
 
     public class PlainHeader implements Serializable {
