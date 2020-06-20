@@ -287,11 +287,31 @@ public class AidlNetworkRequest extends NetworkRequest {
 
             // InputStream is should be closed in pipeFrom
             ParcelFileDescriptor input = ParcelFileDescriptorUtil.pipeFrom(is,
-                    thread -> Log.d(TAG, "copy data from service finished"));
+                    thread -> {
+                        try {
+                            if (is != null){
+                                is.close();
+                            }
+                        } catch (IOException e) {
+                            Log.d(TAG, "failed to close Request Input stream");
+                        }
+                        Log.d(TAG, "copy data from service finished");
+                    });
             ParcelFileDescriptor requestBodyParcelFileDescriptor = null;
             if (requestBodyInputStream != null) {
                 requestBodyParcelFileDescriptor = ParcelFileDescriptorUtil.pipeFrom(requestBodyInputStream,
-                        thread -> Log.d(TAG, "copy data from service finished"));
+                        thread -> {
+                            try {
+                                if (is != null){
+                                    is.close();
+                                }
+                                // cant be null:
+                                requestBodyInputStream.close();
+                            } catch (IOException e) {
+                                Log.d(TAG, "failed to close Request Input stream");
+                            }
+                            Log.d(TAG, "copy data from service finished");
+                        });
             }
 
             ParcelFileDescriptor output;
