@@ -306,7 +306,7 @@ public class AidlNetworkRequest extends NetworkRequest {
     }
 
     private static <T> T deserializeObject(InputStream is) throws IOException, ClassNotFoundException {
-        ObjectInputStream ois = new ObjectInputStream(is)
+        ObjectInputStream ois = new ObjectInputStream(is);
         T result = (T) ois.readObject();
         return result;
     }
